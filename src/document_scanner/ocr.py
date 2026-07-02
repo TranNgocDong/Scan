@@ -68,3 +68,53 @@ def run_tesseract_ocr(image, lang: str = "eng", psm: int = 6) -> tuple[str, str 
     config = f"--oem 3 --psm {int(psm)} --dpi 300 -c preserve_interword_spaces=1"
     text = pytesseract.image_to_string(ocr_image, lang=lang, config=config)
     return text, None
+
+
+def run_tesseract_ocr_with_confidence(image, lang: str = "eng", psm: int = 6) -> tuple[str, float, str | None]:
+    """Run OCR and return mean word confidence from Tesseract.
+
+    Returns (text, mean_confidence, warning). Confidence is -1 when unavailable.
+    """
+    try:
+        import pytesseract
+    except ImportError:
+        return "", -1.0, "Python package pytesseract is not installed. Run: python -m pip install pytesseract"
+
+    tesseract_cmd = _resolve_tesseract_cmd()
+    if tesseract_cmd is None:
+        return "", -1.0, (
+            "Tesseract executable was not found in PATH. Install Tesseract OCR "
+            "and add it to PATH before running OCR."
+        )
+    pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
+
+    tessdata = os.environ.get("TESSDATA_PREFIX")
+    if not tessdata and Path("E:/Visual_download/tessdata").exists():
+        tessdata = "E:/Visual_download/tessdata"
+        os.environ["TESSDATA_PREFIX"] = tessdata
+
+    if image.ndim == 2:
+        ocr_image = image
+    else:
+        ocr_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+    config = f"--oem 3 --psm {int(psm)} --dpi 300 -c preserve_interword_spaces=1"
+    text = pytesseract.image_to_string(ocr_image, lang=lang, config=config)
+
+    confidences = []
+    data = pytesseract.image_to_data(
+        ocr_image,
+        lang=lang,
+        config=config,
+        output_type=pytesseract.Output.DICT,
+    )
+    for raw_conf in data.get("conf", []):
+        try:
+            conf = float(raw_conf)
+        except (TypeError, ValueError):
+            continue
+        if conf >= 0:
+            confidences.append(conf)
+
+    mean_conf = sum(confidences) / len(confidences) if confidences else -1.0
+    return text, mean_conf, None

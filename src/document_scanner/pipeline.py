@@ -15,7 +15,7 @@ from .document_detect import (
     find_document_contour,
 )
 from .evaluation import character_error_rate, word_error_rate
-from .ocr import run_tesseract_ocr
+from .ocr import run_tesseract_ocr_with_confidence
 from .perspective import four_point_transform
 from .preprocess import (
     add_white_margin,
@@ -213,6 +213,7 @@ def process_document_image(
     # image, not a replacement for the CV pipeline.
     # Muc tieu o day la chon anh nao vao Tesseract thi cho ket qua tot nhat.
     ocr_candidates = {
+        "readable_scan": readable_scan,
         "cleaned_full": cleaned,
         "text_crop_cleaned": ocr_ready,
         "text_crop_no_morph": add_white_margin(
@@ -236,39 +237,54 @@ def process_document_image(
     best_cer = None
     best_wer = None
     best_image = ocr_ready
+    psm_values = []
+    for psm in [params.tesseract_psm, 3, 4]:
+        if psm not in psm_values:
+            psm_values.append(psm)
+
     for name, candidate in ocr_candidates.items():
-        # OCR tung ung vien de so sanh roi chon anh tot nhat.
-        text, warning = run_tesseract_ocr(
-            candidate,
-            lang=params.tesseract_lang,
-            psm=params.tesseract_psm,
-        )
-        score, cer, wer = _score_ocr_candidate(text, truth)
-        if truth is None:
-            # For real book photos, cropped grayscale/binary variants are usually
-            # more reliable than the full thresholded page because they contain
-            # less paper texture, shadow and back-side bleed-through.
-            score += {
-                "gray_text_crop": -45.0,
-                "text_crop_cleaned": -30.0,
-                "text_crop_no_morph": -20.0,
-                "otsu_text_crop": -10.0,
-                "cleaned_full": 35.0,
-            }.get(name, 0.0)
-        if warning is not None:
-            best_name = name
-            best_text = text
-            best_warning = warning
-            best_image = candidate
+        for psm in psm_values:
+            # OCR tung ung vien va tung che do PSM de chon cach doc on nhat.
+            text, mean_conf, warning = run_tesseract_ocr_with_confidence(
+                candidate,
+                lang=params.tesseract_lang,
+                psm=psm,
+            )
+            score, cer, wer = _score_ocr_candidate(text, truth)
+            if truth is None:
+                # For real book photos, readable grayscale/cropped variants often
+                # beat harsh binary images. Mean confidence helps avoid outputs
+                # that are long but full of fake characters.
+                score += {
+                    "readable_scan": -80.0,
+                    "gray_text_crop": -55.0,
+                    "text_crop_cleaned": -30.0,
+                    "text_crop_no_morph": -20.0,
+                    "otsu_text_crop": -10.0,
+                    "cleaned_full": 45.0,
+                }.get(name, 0.0)
+                if mean_conf >= 0:
+                    score -= mean_conf * 2.0
+                if psm in (3, 4):
+                    score -= 8.0
+                elif psm in (11, 12):
+                    score += 4.0
+            if warning is not None:
+                best_name = f"{name}_psm{psm}"
+                best_text = text
+                best_warning = warning
+                best_image = candidate
+                break
+            if score < best_score:
+                best_name = f"{name}_psm{psm}"
+                best_text = text
+                best_warning = warning
+                best_score = score
+                best_cer = cer
+                best_wer = wer
+                best_image = candidate
+        if best_warning is not None:
             break
-        if score < best_score:
-            best_name = name
-            best_text = text
-            best_warning = warning
-            best_score = score
-            best_cer = cer
-            best_wer = wer
-            best_image = candidate
 
     ocr_text = best_text
     ocr_warning = best_warning
