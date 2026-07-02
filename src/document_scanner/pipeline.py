@@ -34,30 +34,30 @@ from .preprocess import (
 
 @dataclass
 class ScannerParams:
-    # Kích thước tối đa của cạnh dài nhất sau khi resize.
+    # Kich thuoc toi da cua canh dai nhat sau khi resize.
     max_side: int = 1200
-    # Kích thước kernel Gaussian để làm mượt trước khi dò biên.
+    # Kich thuoc kernel Gaussian de lam muot truoc khi do bien.
     blur_ksize: int = 5
-    # Hai ngưỡng thấp/cao của Canny.
+    # Hai nguong thap/cao cua Canny.
     canny_low: int = 60
     canny_high: int = 160
-    # Tham số threshold thích nghi cho bước tách chữ khỏi nền.
+    # Tham so threshold thich nghi cho buoc tach chu khoi nen.
     adaptive_block_size: int = 31
     adaptive_c: int = 11
-    # Kích thước kernel morphology, nên giữ nhỏ để tránh làm mất nét chữ.
+    # Kich thuoc kernel morphology, nen giu nho de tranh lam mat net chu.
     morph_kernel: int = 1
-    # Phần lề giữ thêm quanh vùng chữ sau khi crop.
+    # Phan le giu them quanh vung chu sau khi crop.
     text_crop_padding: int = 28
-    # Hệ số phóng to ảnh trước OCR.
+    # He so phong to anh truoc OCR.
     ocr_scale: float = 2.0
-    # Ngôn ngữ Tesseract.
+    # Ngon ngu Tesseract.
     tesseract_lang: str = "eng"
-    # Chế độ phân đoạn trang của Tesseract.
+    # Che do phan doan trang cua Tesseract.
     tesseract_psm: int = 6
 
 
 def save_image(path: Path, image: np.ndarray) -> None:
-    # Lưu ảnh trung gian ra đĩa để người xem có thể kiểm tra từng bước xử lý.
+    # Luu anh trung gian ra dia de nguoi xem co the kiem tra tung buoc xu ly.
     path.parent.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(str(path), image)
 
@@ -77,7 +77,7 @@ def prepare_for_ocr(image: np.ndarray, scale: float = 2.0) -> np.ndarray:
 def _score_ocr_candidate(text: str, truth: str | None) -> tuple[float, float | None, float | None]:
     """Score an OCR candidate. Lower score is better."""
     if truth is not None:
-        # Nếu có ground truth thì chọn ảnh OCR nào cho CER thấp nhất.
+        # Neu co ground truth thi chon anh OCR nao cho CER thap nhat.
         cer = character_error_rate(text, truth)
         wer = word_error_rate(text, truth)
         return cer, cer, wer
@@ -130,24 +130,24 @@ def process_document_image(
     if image is None:
         raise FileNotFoundError(f"Cannot read image: {image_path}")
 
-    # 1) Thu nhỏ ảnh nếu quá lớn để pipeline chạy ổn định và nhanh hơn.
+    # 1) Thu nho anh neu qua lon de pipeline chay on dinh va nhanh hon.
     resized, scale = resize_max_side(image, params.max_side)
-    # 2) Đưa về grayscale để các phép xử lý ảnh làm việc trên một kênh sáng.
+    # 2) Dua ve grayscale de cac phep xu ly anh lam viec tren mot kenh sang.
     gray = to_gray(resized)
-    # 3) Tăng tương phản cục bộ để chữ và nền tách nhau rõ hơn.
+    # 3) Tang tuong phan cuc bo de chu va nen tach nhau ro hon.
     enhanced = clahe_contrast(gray)
-    # 4) Làm mượt nhẹ để giảm nhiễu trước khi tìm cạnh.
+    # 4) Lam muot nhe de giam nhieu truoc khi tim canh.
     blurred = denoise(enhanced, params.blur_ksize)
-    # 5) Dò biên để tìm khung giấy.
+    # 5) Do bien de tim khung giay.
     edges = canny_edges(blurred, params.canny_low, params.canny_high)
-    # 6) Tìm contour lớn nhất gần giống tờ giấy.
+    # 6) Tim contour lon nhat gan giong to giay.
     canny_contour = find_document_contour(edges)
     bright_contour = find_bright_document_contour(resized)
     canny_area = contour_area_ratio(canny_contour, resized.shape)
     bright_area = contour_area_ratio(bright_contour, resized.shape)
 
-    # Canny có thể bắt nhầm đường gạch nền hoặc bóng tay. Nếu vùng giấy sáng lớn hơn
-    # rõ rệt, ta ưu tiên contour dựa trên vùng giấy sáng để output scan dễ nhìn hơn.
+    # Canny co the bat nham duong gach nen hoac bong tay. Neu vung giay sang lon hon
+    # ro ret, ta uu tien contour dua tren vung giay sang de output scan de nhin hon.
     contour = canny_contour
     contour_method = "canny"
     if bright_contour is not None and (contour is None or bright_area > max(canny_area * 1.35, 0.18)):
@@ -155,36 +155,36 @@ def process_document_image(
         contour_method = "bright_page"
     used_fallback = contour is None
     if contour is None:
-        # Nếu không tìm được contour tin cậy thì dùng luôn 4 góc ảnh.
+        # Neu khong tim duoc contour tin cay thi dung luon 4 goc anh.
         contour = fallback_page_corners(resized.shape)
         contour_method = "full_image_fallback"
 
-    # 7) Vẽ contour lên ảnh để lưu ảnh trung gian.
+    # 7) Ve contour len anh de luu anh trung gian.
     overlay = draw_contour_overlay(resized, contour)
-    # 8) Warp phối cảnh để đưa ảnh nghiêng về gần dạng scan thẳng.
+    # 8) Warp phoi canh de dua anh nghieng ve gan dang scan thang.
     warped_color = four_point_transform(resized, contour)
-    # 9) Cắt viền đen còn sót lại nếu ảnh là screenshot hoặc scan có mép thừa.
+    # 9) Cat vien den con sot lai neu anh la screenshot hoac scan co mep thua.
     borderless_color = remove_dark_borders(warped_color)
-    # 9b) Cắt tiếp phần nền xám/gạch còn sót lại quanh trang giấy.
+    # 9b) Cat tiep phan nen xam/gach con sot lai quanh trang giay.
     page_region_color = crop_light_page_region(borderless_color)
-    # 10) Đưa ảnh sau warp về grayscale để tiếp tục xử lý chữ.
+    # 10) Dua anh sau warp ve grayscale de tiep tuc xu ly chu.
     warped_gray = to_gray(page_region_color)
-    # 11) Tăng tương phản lần nữa trên ảnh đã được sửa phối cảnh.
+    # 11) Tang tuong phan lan nua tren anh da duoc sua phoi canh.
     warped_enhanced = clahe_contrast(warped_gray)
-    # 12) Binarize thích nghi để tách chữ khỏi nền không đều.
+    # 12) Binarize thich nghi de tach chu khoi nen khong deu.
     binary = adaptive_binarize(
         warped_enhanced,
         block_size=params.adaptive_block_size,
         c_value=params.adaptive_c,
     )
-    # 13) Làm sạch nhiễu nhỏ bằng morphology, nhưng giữ kernel nhỏ để không làm dính chữ.
+    # 13) Lam sach nhieu nho bang morphology, nhung giu kernel nho de khong lam dinh chu.
     cleaned = clean_binary(binary, kernel_size=params.morph_kernel)
-    # 14) Crop đúng vùng có chữ để bỏ phần trắng thừa và viền đen.
+    # 14) Crop dung vung co chu de bo phan trang thua va vien den.
     text_crop = crop_text_region(cleaned, padding=params.text_crop_padding)
-    # 15) Phóng to và thêm lề trắng để Tesseract đọc dễ hơn.
+    # 15) Phong to va them le trang de Tesseract doc de hon.
     ocr_ready = add_white_margin(prepare_for_ocr(text_crop, scale=params.ocr_scale), margin=35)
-    # 16) Ảnh scan để báo cáo nên dễ nhìn, nên dùng ảnh xám tăng tương phản thay vì
-    # ảnh nhị phân quá gắt. OCR vẫn có thể dùng một biến thể khác ở bên dưới.
+    # 16) Anh scan de bao cao nen de nhin, nen dung anh xam tang tuong phan thay vi
+    # anh nhi phan qua gat. OCR van co the dung mot bien the khac o ben duoi.
     readable_scan = add_white_margin(
         prepare_for_ocr(crop_text_region(warped_enhanced, padding=params.text_crop_padding), scale=params.ocr_scale),
         margin=35,
@@ -211,7 +211,7 @@ def process_document_image(
 
     # Try a few OCR-oriented variants. This is a parameter sweep for the OCR input
     # image, not a replacement for the CV pipeline.
-    # Mục tiêu ở đây là chọn ảnh nào vào Tesseract thì cho kết quả tốt nhất.
+    # Muc tieu o day la chon anh nao vao Tesseract thi cho ket qua tot nhat.
     ocr_candidates = {
         "cleaned_full": cleaned,
         "text_crop_cleaned": ocr_ready,
@@ -237,7 +237,7 @@ def process_document_image(
     best_wer = None
     best_image = ocr_ready
     for name, candidate in ocr_candidates.items():
-        # OCR từng ứng viên để so sánh rồi chọn ảnh tốt nhất.
+        # OCR tung ung vien de so sanh roi chon anh tot nhat.
         text, warning = run_tesseract_ocr(
             candidate,
             lang=params.tesseract_lang,
@@ -310,19 +310,19 @@ def parameter_sweep(
     base_params = base_params or ScannerParams()
 
     sweep_configs = []
-    # Sweep 1: thử các ngưỡng Canny khác nhau để xem biên giấy nào ổn nhất.
+    # Sweep 1: thu cac nguong Canny khac nhau de xem bien giay nao on nhat.
     for low, high in [(40, 120), (60, 160), (100, 220)]:
         params = ScannerParams(**{**base_params.__dict__, "canny_low": low, "canny_high": high})
         sweep_configs.append((f"canny_{low}_{high}", params))
-    # Sweep 2: thử block size của adaptive threshold.
+    # Sweep 2: thu block size cua adaptive threshold.
     for block in [15, 31, 51]:
         params = ScannerParams(**{**base_params.__dict__, "adaptive_block_size": block})
         sweep_configs.append((f"block_{block}", params))
-    # Sweep 3: thử kernel morphology nhỏ-vừa-lớn.
+    # Sweep 3: thu kernel morphology nho-vua-lon.
     for kernel in [1, 2, 3]:
         params = ScannerParams(**{**base_params.__dict__, "morph_kernel": kernel})
         sweep_configs.append((f"morph_{kernel}", params))
-    # Sweep 4: thử khoảng đệm quanh vùng chữ để tránh cắt mất dấu hoặc ký tự sát biên.
+    # Sweep 4: thu khoang dem quanh vung chu de tranh cat mat dau hoac ky tu sat bien.
     for padding in [12, 28, 44]:
         params = ScannerParams(**{**base_params.__dict__, "text_crop_padding": padding})
         sweep_configs.append((f"text_crop_padding_{padding}", params))

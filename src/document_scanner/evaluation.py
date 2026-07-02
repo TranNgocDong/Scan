@@ -5,7 +5,7 @@ import re
 
 def normalize_text(text: str) -> str:
     """Normalize OCR/ground-truth text for fairer CER/WER evaluation."""
-    # Chuẩn hóa để tránh lệch vì khác hoa/thường hoặc khoảng trắng thừa.
+    # Chuan hoa de tranh lech vi khac hoa/thuong hoac khoang trang thua.
     text = text.lower()
     text = re.sub(r"\s+", " ", text)
     return text.strip()
@@ -13,7 +13,7 @@ def normalize_text(text: str) -> str:
 
 def levenshtein(a: list[str] | str, b: list[str] | str) -> int:
     """Compute Levenshtein edit distance."""
-    # Đây là số phép sửa ít nhất để đổi chuỗi a thành chuỗi b.
+    # Day la so phep sua it nhat de doi chuoi a thanh chuoi b.
     n, m = len(a), len(b)
     if n == 0:
         return m
@@ -36,7 +36,7 @@ def levenshtein(a: list[str] | str, b: list[str] | str) -> int:
 
 def character_error_rate(pred: str, truth: str) -> float:
     """CER = edit_distance(characters) / number_of_truth_characters."""
-    # Đo sai số theo từng ký tự, phù hợp để xem OCR sai dấu hay sai chữ.
+    # Do sai so theo tung ky tu, phu hop de xem OCR sai dau hay sai chu.
     pred_n = normalize_text(pred)
     truth_n = normalize_text(truth)
     if not truth_n:
@@ -46,7 +46,7 @@ def character_error_rate(pred: str, truth: str) -> float:
 
 def word_error_rate(pred: str, truth: str) -> float:
     """WER = edit_distance(words) / number_of_truth_words."""
-    # Đo sai số theo từng từ, nên nhạy với việc mất từ hoặc tách từ sai.
+    # Do sai so theo tung tu, nen nhay voi viec mat tu hoac tach tu sai.
     pred_words = normalize_text(pred).split()
     truth_words = normalize_text(truth).split()
     if not truth_words:

@@ -11,12 +11,12 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
 
 
 def find_images(image_dir: Path) -> list[Path]:
-    # Duyệt đệ quy để nhặt mọi ảnh thật trong thư mục đầu vào.
+    # Duyet de quy de nhat moi anh that trong thu muc dau vao.
     return sorted(p for p in image_dir.rglob("*") if p.suffix.lower() in IMAGE_EXTS)
 
 
 def ground_truth_for(image_path: Path, gt_dir: Path) -> Path:
-    # Mỗi ảnh được ghép với một file .txt cùng stem tên.
+    # Moi anh duoc ghep voi mot file .txt cung stem ten.
     return gt_dir / f"{image_path.stem}.txt"
 
 
@@ -39,7 +39,7 @@ def main() -> None:
         print(f"No images found in {image_dir}. Put real document photos there first.")
         return
 
-    # Chạy pipeline cho từng ảnh và thu kết quả để ghi summary.csv.
+    # Chay pipeline cho tung anh va thu ket qua de ghi summary.csv.
     rows = []
     params = ScannerParams(tesseract_lang=args.lang, tesseract_psm=args.psm)
     for image_path in images:
@@ -73,7 +73,7 @@ def main() -> None:
     print(f"Summary saved to {summary_path}")
 
     if args.sweep:
-        # Sweep chỉ chạy trên ảnh đầu tiên để tiết kiệm thời gian.
+        # Sweep chi chay tren anh dau tien de tiet kiem thoi gian.
         first = images[0]
         gt_path = ground_truth_for(first, gt_dir)
         gt_arg = gt_path if gt_path.exists() else None

@@ -17,7 +17,7 @@ def contour_area_ratio(contour: np.ndarray | None, image_shape: tuple[int, int] 
 
 def canny_edges(gray: np.ndarray, low: int = 60, high: int = 160, dilate_iter: int = 1) -> np.ndarray:
     """Detect document edges with Canny and optional dilation."""
-    # Dò biên trước, rồi nở nhẹ cạnh để contour giấy dễ khép kín hơn.
+    # Do bien truoc, roi no nhe canh de contour giay de khep kin hon.
     edges = cv2.Canny(gray, int(low), int(high))
     if dilate_iter > 0:
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
@@ -27,7 +27,7 @@ def canny_edges(gray: np.ndarray, low: int = 60, high: int = 160, dilate_iter: i
 
 def find_document_contour(edges: np.ndarray, min_area_ratio: float = 0.15) -> np.ndarray | None:
     """Find largest quadrilateral contour likely to be the paper boundary."""
-    # Chỉ lấy contour ngoài cùng vì viền giấy thường là khung lớn nhất.
+    # Chi lay contour ngoai cung vi vien giay thuong la khung lon nhat.
     contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
         return None
@@ -37,12 +37,12 @@ def find_document_contour(edges: np.ndarray, min_area_ratio: float = 0.15) -> np
     contours = sorted(contours, key=cv2.contourArea, reverse=True)
 
     for contour in contours:
-        # Bỏ contour quá nhỏ vì đó thường là nhiễu hoặc chi tiết chữ.
+        # Bo contour qua nho vi do thuong la nhieu hoac chi tiet chu.
         area = cv2.contourArea(contour)
         if area < min_area:
             continue
 
-        # Thử nhiều mức xấp xỉ để xem contour có gần giống tứ giác không.
+        # Thu nhieu muc xap xi de xem contour co gan giong tu giac khong.
         perimeter = cv2.arcLength(contour, True)
         for eps_ratio in (0.02, 0.03, 0.04, 0.06, 0.08):
             approx = cv2.approxPolyDP(contour, eps_ratio * perimeter, True)
@@ -94,7 +94,7 @@ def find_bright_document_contour(image: np.ndarray, min_area_ratio: float = 0.12
 
 def fallback_page_corners(image_shape: tuple[int, int] | tuple[int, int, int]) -> np.ndarray:
     """Use whole image corners when no document contour is found."""
-    # Khi không tìm được contour tin cậy thì dùng luôn khung ảnh để pipeline vẫn chạy.
+    # Khi khong tim duoc contour tin cay thi dung luon khung anh de pipeline van chay.
     h, w = image_shape[:2]
     return np.array(
         [[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1]],
@@ -104,7 +104,7 @@ def fallback_page_corners(image_shape: tuple[int, int] | tuple[int, int, int]) -
 
 def draw_contour_overlay(image: np.ndarray, contour: np.ndarray | None) -> np.ndarray:
     """Draw detected document contour for lab-report intermediate output."""
-    # Lớp phủ này chỉ để người đọc nhìn thấy contour đã tìm được ở bước trước.
+    # Lop phu nay chi de nguoi doc nhin thay contour da tim duoc o buoc truoc.
     overlay = image.copy()
     if contour is not None:
         pts = contour.reshape(-1, 1, 2).astype(np.int32)

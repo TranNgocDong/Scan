@@ -6,7 +6,7 @@ import numpy as np
 
 def order_points(pts: np.ndarray) -> np.ndarray:
     """Order 4 points as top-left, top-right, bottom-right, bottom-left."""
-    # Sắp xếp 4 điểm theo thứ tự cố định để warpPerspective không bị lật sai.
+    # Sap xep 4 diem theo thu tu co dinh de warpPerspective khong bi lat sai.
     pts = np.asarray(pts, dtype=np.float32)
     rect = np.zeros((4, 2), dtype=np.float32)
 
@@ -22,11 +22,11 @@ def order_points(pts: np.ndarray) -> np.ndarray:
 
 def four_point_transform(image: np.ndarray, pts: np.ndarray) -> np.ndarray:
     """Warp document to a top-down rectangle."""
-    # Sau khi có 4 góc trang, ta ép ảnh về dạng nhìn thẳng từ trên xuống.
+    # Sau khi co 4 goc trang, ta ep anh ve dang nhin thang tu tren xuong.
     rect = order_points(pts)
     tl, tr, br, bl = rect
 
-    # Tính kích thước ảnh đích dựa trên độ dài các cạnh đối diện.
+    # Tinh kich thuoc anh dich dua tren do dai cac canh doi dien.
     width_a = np.linalg.norm(br - bl)
     width_b = np.linalg.norm(tr - tl)
     max_width = max(int(round(width_a)), int(round(width_b)), 1)
@@ -45,8 +45,8 @@ def four_point_transform(image: np.ndarray, pts: np.ndarray) -> np.ndarray:
         dtype=np.float32,
     )
 
-    # Ma trận biến đổi phối cảnh từ 4 điểm gốc sang 4 điểm đích.
+    # Ma tran bien doi phoi canh tu 4 diem goc sang 4 diem dich.
     matrix = cv2.getPerspectiveTransform(rect, dst)
-    # Nội suy để tạo ảnh đã được “trải phẳng”.
+    # Noi suy de tao anh da duoc "trai phang".
     warped = cv2.warpPerspective(image, matrix, (max_width, max_height))
     return warped

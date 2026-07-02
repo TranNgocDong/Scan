@@ -9,7 +9,7 @@ def resize_max_side(image: np.ndarray, max_side: int = 1200) -> tuple[np.ndarray
 
     Returns the resized image and the scale factor from original to resized.
     """
-    # Giữ tỷ lệ ảnh gốc, chỉ thu nhỏ nếu ảnh quá lớn để pipeline nhanh hơn.
+    # Giu ty le anh goc, chi thu nho neu anh qua lon de pipeline nhanh hon.
     h, w = image.shape[:2]
     largest = max(h, w)
     if largest <= max_side:
@@ -24,7 +24,7 @@ def resize_max_side(image: np.ndarray, max_side: int = 1200) -> tuple[np.ndarray
 
 def to_gray(image: np.ndarray) -> np.ndarray:
     """Convert BGR/RGB/grayscale image to grayscale."""
-    # OCR và các bước tiền xử lý thường chỉ cần một kênh sáng.
+    # OCR va cac buoc tien xu ly thuong chi can mot kenh sang.
     if image.ndim == 2:
         return image.copy()
     return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -32,7 +32,7 @@ def to_gray(image: np.ndarray) -> np.ndarray:
 
 def clahe_contrast(gray: np.ndarray, clip_limit: float = 2.0, tile_grid_size: int = 8) -> np.ndarray:
     """Improve local contrast with CLAHE."""
-    # CLAHE tăng tương phản theo từng vùng nhỏ, tốt cho ảnh sáng không đều.
+    # CLAHE tang tuong phan theo tung vung nho, tot cho anh sang khong deu.
     clahe = cv2.createCLAHE(
         clipLimit=float(clip_limit),
         tileGridSize=(int(tile_grid_size), int(tile_grid_size)),
@@ -42,7 +42,7 @@ def clahe_contrast(gray: np.ndarray, clip_limit: float = 2.0, tile_grid_size: in
 
 def denoise(gray: np.ndarray, blur_ksize: int = 5) -> np.ndarray:
     """Denoise image before edge detection."""
-    # Làm mượt nhẹ để Canny bớt bắt nhiễu lặt vặt.
+    # Lam muot nhe de Canny bot bat nhieu lat vat.
     blur_ksize = int(blur_ksize)
     if blur_ksize <= 1:
         return gray.copy()
@@ -57,7 +57,7 @@ def adaptive_binarize(
     c_value: int = 11,
 ) -> np.ndarray:
     """Binarize document using adaptive Gaussian threshold."""
-    # block_size phải là số lẻ; ngưỡng được tính cục bộ theo từng vùng.
+    # block_size phai la so le; nguong duoc tinh cuc bo theo tung vung.
     block_size = int(block_size)
     if block_size % 2 == 0:
         block_size += 1
@@ -75,20 +75,20 @@ def adaptive_binarize(
 
 def otsu_binarize(gray: np.ndarray) -> np.ndarray:
     """Binarize document using Otsu threshold."""
-    # Otsu chọn ngưỡng tự động dựa trên histogram toàn ảnh.
+    # Otsu chon nguong tu dong dua tren histogram toan anh.
     _, out = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     return out
 
 
 def clean_binary(binary: np.ndarray, kernel_size: int = 2, close_first: bool = True) -> np.ndarray:
     """Clean small noise in binarized text image with morphology."""
-    # Kernel size = 1 nghĩa là hầu như không làm gì để tránh bào mòn nét chữ.
+    # Kernel size = 1 nghia la hau nhu khong lam gi de tranh bao mon net chu.
     kernel_size = max(1, int(kernel_size))
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (kernel_size, kernel_size))
     if kernel_size <= 1:
         return binary.copy()
 
-    # Close trước để lấp các lỗ nhỏ trong nét chữ, rồi open để bỏ chấm nhiễu.
+    # Close truoc de lap cac lo nho trong net chu, roi open de bo cham nhieu.
     if close_first:
         cleaned = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
         cleaned = cv2.morphologyEx(cleaned, cv2.MORPH_OPEN, kernel)
@@ -105,7 +105,7 @@ def remove_dark_borders(image: np.ndarray, threshold: int = 25, margin: int = 6)
     separators. This function keeps the largest region that is not dominated by very
     dark border pixels. It is used as a fallback cleanup step before OCR.
     """
-    # Mục tiêu là bỏ các dải đen ở mép trên/dưới/trái/phải nếu ảnh là screenshot.
+    # Muc tieu la bo cac dai den o mep tren/duoi/trai/phai neu anh la screenshot.
     gray = to_gray(image)
     dark = gray < int(threshold)
     h, w = gray.shape
@@ -183,7 +183,7 @@ def crop_text_region(binary_or_gray: np.ndarray, padding: int = 28) -> np.ndarra
     regions. This improves OCR when the page detector falls back to the full image
     and leaves large margins or screenshot separators.
     """
-    # Dùng các cụm pixel tối để tìm vùng có chữ thay vì giữ cả trang trắng.
+    # Dung cac cum pixel toi de tim vung co chu thay vi giu ca trang trang.
     gray = to_gray(binary_or_gray)
     h, w = gray.shape
 
@@ -195,7 +195,7 @@ def crop_text_region(binary_or_gray: np.ndarray, padding: int = 28) -> np.ndarra
 
     for label in range(1, num_labels):
         x, y, bw, bh, area = stats[label]
-        # Bỏ nhiễu quá nhỏ và bỏ những khối quá lớn vì thường không phải chữ.
+        # Bo nhieu qua nho va bo nhung khoi qua lon vi thuong khong phai chu.
         if area < 3:
             continue
         if area > image_area * 0.08:
@@ -216,8 +216,8 @@ def crop_text_region(binary_or_gray: np.ndarray, padding: int = 28) -> np.ndarra
     crop_h = y1 - y0
     crop_w = x1 - x0
     crop_area = crop_h * crop_w
-    # Chặn lỗi crop nhầm thành một dải rất hẹp hoặc gần như trắng toàn bộ.
-    # Với ảnh sách thật, một crop quá hẹp thường là mép giấy/đường kẻ, không phải vùng chữ.
+    # Chan loi crop nham thanh mot dai rat hep hoac gan nhu trang toan bo.
+    # Voi anh sach that, mot crop qua hep thuong la mep giay/duong ke, khong phai vung chu.
     # A real text block on a page should not collapse to a very thin horizontal
     # strip. If that happens, it is usually floor texture/page shadow near the
     # border, so keeping the original page is safer and easier to explain.
@@ -229,7 +229,7 @@ def crop_text_region(binary_or_gray: np.ndarray, padding: int = 28) -> np.ndarra
 
 def add_white_margin(image: np.ndarray, margin: int = 30) -> np.ndarray:
     """Add a white margin around an OCR image so Tesseract sees complete lines."""
-    # Margin trắng giúp Tesseract không bị cắt sát mép dòng chữ.
+    # Margin trang giup Tesseract khong bi cat sat mep dong chu.
     if margin <= 0:
         return image.copy()
     value = 255 if image.ndim == 2 else (255, 255, 255)

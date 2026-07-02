@@ -9,23 +9,23 @@ import cv2
 
 def is_tesseract_available() -> bool:
     """Check whether the external Tesseract executable is available."""
-    # Nếu tìm được executable thì mới chạy OCR thật.
+    # Neu tim duoc executable thi moi chay OCR that.
     return _resolve_tesseract_cmd() is not None
 
 
 def _resolve_tesseract_cmd() -> str | None:
     """Resolve Tesseract path from env, PATH, or the known local install folder."""
-    # Ưu tiên biến môi trường do người dùng cấu hình.
+    # Uu tien bien moi truong do nguoi dung cau hinh.
     env_cmd = os.environ.get("TESSERACT_CMD")
     if env_cmd and Path(env_cmd).exists():
         return env_cmd
 
-    # Nếu đã add vào PATH thì lấy trực tiếp từ PATH.
+    # Neu da add vao PATH thi lay truc tiep tu PATH.
     path_cmd = shutil.which("tesseract")
     if path_cmd:
         return path_cmd
 
-    # Cuối cùng mới thử đường dẫn cài đặt cục bộ mà project đang dùng.
+    # Cuoi cung moi thu duong dan cai dat cuc bo ma project dang dung.
     known = Path("E:/Visual_download/tesseract.exe")
     if known.exists():
         return str(known)
@@ -48,23 +48,23 @@ def run_tesseract_ocr(image, lang: str = "eng", psm: int = 6) -> tuple[str, str 
             "Tesseract executable was not found in PATH. Install Tesseract OCR "
             "and add it to PATH before running OCR."
         )
-    # Gắn đúng đường dẫn executable để pytesseract biết gọi engine nào.
+    # Gan dung duong dan executable de pytesseract biet goi engine nao.
     pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
 
-    # Nếu chưa có TESSDATA_PREFIX thì tự set sang thư mục tessdata đã cài sẵn.
+    # Neu chua co TESSDATA_PREFIX thi tu set sang thu muc tessdata da cai san.
     tessdata = os.environ.get("TESSDATA_PREFIX")
     if not tessdata and Path("E:/Visual_download/tessdata").exists():
         tessdata = "E:/Visual_download/tessdata"
         os.environ["TESSDATA_PREFIX"] = tessdata
 
-    # Tesseract thích ảnh xám hoặc RGB, nên ảnh màu BGR phải đổi sang RGB trước.
+    # Tesseract thich anh xam hoac RGB, nen anh mau BGR phai doi sang RGB truoc.
     if image.ndim == 2:
         ocr_image = image
     else:
         ocr_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-    # oem=3: dùng chế độ OCR mặc định mạnh nhất của Tesseract.
-    # psm do mình chọn theo bố cục tài liệu, ở đây mặc định là 6.
+    # oem=3: dung che do OCR mac dinh manh nhat cua Tesseract.
+    # psm do minh chon theo bo cuc tai lieu, o day mac dinh la 6.
     config = f"--oem 3 --psm {int(psm)} --dpi 300 -c preserve_interword_spaces=1"
     text = pytesseract.image_to_string(ocr_image, lang=lang, config=config)
     return text, None
