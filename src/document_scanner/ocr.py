@@ -65,6 +65,6 @@ def run_tesseract_ocr(image, lang: str = "eng", psm: int = 6) -> tuple[str, str 
 
     # oem=3: dùng chế độ OCR mặc định mạnh nhất của Tesseract.
     # psm do mình chọn theo bố cục tài liệu, ở đây mặc định là 6.
-    config = f"--oem 3 --psm {int(psm)}"
+    config = f"--oem 3 --psm {int(psm)} --dpi 300 -c preserve_interword_spaces=1"
     text = pytesseract.image_to_string(ocr_image, lang=lang, config=config)
     return text, None

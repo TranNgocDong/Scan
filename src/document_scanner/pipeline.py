@@ -82,11 +82,33 @@ def _score_ocr_candidate(text: str, truth: str | None) -> tuple[float, float | N
         wer = word_error_rate(text, truth)
         return cer, cer, wer
 
-    # Fallback without labels: prefer more alphanumeric text and fewer odd symbols.
+    # Without ground truth, we cannot know the exact OCR error. A long output is
+    # not always good: noisy page texture can create many fake characters. This
+    # score rewards word-like text and penalizes strange punctuation/noise.
     stripped = text.strip()
-    alpha_count = sum(ch.isalnum() for ch in stripped)
+    if not stripped:
+        return float("inf"), None, None
+
+    total = max(len(stripped), 1)
+    letter_count = sum(ch.isalpha() for ch in stripped)
+    digit_count = sum(ch.isdigit() for ch in stripped)
     symbol_count = sum((not ch.isalnum()) and (not ch.isspace()) for ch in stripped)
-    score = -(alpha_count - 0.5 * symbol_count)
+    suspicious_symbols = set("`~^_=+*|\\/<>{}[]")
+    suspicious_count = sum(ch in suspicious_symbols or ch == "\ufffd" for ch in stripped)
+    words = [word for word in stripped.replace("\n", " ").split(" ") if word]
+    short_noise_words = sum(1 for word in words if len(word) <= 1 and not word.isalnum())
+    symbol_ratio = symbol_count / total
+
+    score = (
+        -0.08 * letter_count
+        -0.03 * digit_count
+        -1.2 * len(words)
+        + 5.0 * symbol_count
+        + 10.0 * suspicious_count
+        + 3.0 * short_noise_words
+    )
+    if symbol_ratio > 0.12:
+        score += 2.0 * total
     return score, None, None
 
 
@@ -222,6 +244,17 @@ def process_document_image(
             psm=params.tesseract_psm,
         )
         score, cer, wer = _score_ocr_candidate(text, truth)
+        if truth is None:
+            # For real book photos, cropped grayscale/binary variants are usually
+            # more reliable than the full thresholded page because they contain
+            # less paper texture, shadow and back-side bleed-through.
+            score += {
+                "gray_text_crop": -45.0,
+                "text_crop_cleaned": -30.0,
+                "text_crop_no_morph": -20.0,
+                "otsu_text_crop": -10.0,
+                "cleaned_full": 35.0,
+            }.get(name, 0.0)
         if warning is not None:
             best_name = name
             best_text = text
