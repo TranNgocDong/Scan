@@ -1,11 +1,21 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
 from tkinter import Tk, filedialog, messagebox
+
+# Khi bam Run truc tiep file nay trong VS Code, Python chi thay thu muc
+# src/document_scanner. Them project root vao sys.path de import scan_folder.py.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from scan_folder import DEFAULT_GT_DIR, IMAGE_EXTS, find_images, scan_images
 
-from .pipeline import ScannerParams
+try:
+    from .pipeline import ScannerParams
+except ImportError:
+    from src.document_scanner.pipeline import ScannerParams
 
 
 def make_root() -> Tk:
