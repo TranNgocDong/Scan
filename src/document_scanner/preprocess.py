@@ -227,6 +227,79 @@ def crop_text_region(binary_or_gray: np.ndarray, padding: int = 28) -> np.ndarra
     return binary_or_gray[y0:y1, x0:x1].copy()
 
 
+def crop_dominant_text_region(image: np.ndarray, padding: int = 28) -> np.ndarray:
+    """Crop the densest main text block for OCR.
+
+    Book photos often include a page edge, gutter shadow, fingers, or part of the
+    opposite page. A normal bounding box over all dark pixels may keep those
+    distractions. This function dilates text pixels into paragraph-sized blocks
+    and keeps the largest plausible block.
+    """
+    gray = to_gray(image)
+    h, w = gray.shape
+    if h <= 0 or w <= 0:
+        return image.copy()
+
+    # Text is darker than paper. Use a robust threshold so pale paper/shadow is
+    # not counted as text.
+    threshold = min(205, max(120, int(np.percentile(gray, 45)) - 8))
+    dark = (gray < threshold).astype(np.uint8) * 255
+
+    # Join letters into lines and nearby lines into a text block.
+    line_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 3))
+    block_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 13))
+    mask = cv2.morphologyEx(dark, cv2.MORPH_CLOSE, line_kernel, iterations=1)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, block_kernel, iterations=2)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)), iterations=1)
+
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask, 8)
+    if num_labels <= 1:
+        return crop_text_region(image, padding=padding)
+
+    best_label = None
+    best_score = -1.0
+    image_area = h * w
+    for label in range(1, num_labels):
+        x = int(stats[label, cv2.CC_STAT_LEFT])
+        y = int(stats[label, cv2.CC_STAT_TOP])
+        bw = int(stats[label, cv2.CC_STAT_WIDTH])
+        bh = int(stats[label, cv2.CC_STAT_HEIGHT])
+        area = int(stats[label, cv2.CC_STAT_AREA])
+        if area < image_area * 0.01:
+            continue
+        if bw < w * 0.18 or bh < h * 0.12:
+            continue
+        if bw > w * 0.98 and bh > h * 0.90:
+            continue
+
+        # Prefer large, central text blocks. Penalize very thin side strips.
+        center_x = x + bw / 2
+        center_penalty = abs(center_x - w / 2) / max(w, 1)
+        aspect_penalty = 0.0
+        if bw / max(bh, 1) < 0.18:
+            aspect_penalty += 0.6
+        score = area - image_area * 0.15 * center_penalty - image_area * aspect_penalty
+        if score > best_score:
+            best_score = score
+            best_label = label
+
+    if best_label is None:
+        return crop_text_region(image, padding=padding)
+
+    x = int(stats[best_label, cv2.CC_STAT_LEFT])
+    y = int(stats[best_label, cv2.CC_STAT_TOP])
+    bw = int(stats[best_label, cv2.CC_STAT_WIDTH])
+    bh = int(stats[best_label, cv2.CC_STAT_HEIGHT])
+    x0 = max(0, x - padding)
+    y0 = max(0, y - padding)
+    x1 = min(w, x + bw + padding)
+    y1 = min(h, y + bh + padding)
+
+    if (x1 - x0) * (y1 - y0) < image_area * 0.04:
+        return crop_text_region(image, padding=padding)
+    return image[y0:y1, x0:x1].copy()
+
+
 def add_white_margin(image: np.ndarray, margin: int = 30) -> np.ndarray:
     """Add a white margin around an OCR image so Tesseract sees complete lines."""
     # Margin trang giup Tesseract khong bi cat sat mep dong chu.

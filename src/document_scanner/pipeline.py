@@ -22,6 +22,7 @@ from .preprocess import (
     adaptive_binarize,
     clahe_contrast,
     clean_binary,
+    crop_dominant_text_region,
     crop_light_page_region,
     crop_text_region,
     denoise,
@@ -59,7 +60,23 @@ class ScannerParams:
 def save_image(path: Path, image: np.ndarray) -> None:
     # Luu anh trung gian ra dia de nguoi xem co the kiem tra tung buoc xu ly.
     path.parent.mkdir(parents=True, exist_ok=True)
-    cv2.imwrite(str(path), image)
+    # cv2.imwrite tren Windows co the loi voi duong dan co dau tieng Viet.
+    # imencode + tofile doc/ghi duoc duong dan Unicode on dinh hon.
+    ok, encoded = cv2.imencode(path.suffix or ".png", image)
+    if not ok:
+        raise OSError(f"Cannot encode image for saving: {path}")
+    encoded.tofile(str(path))
+
+
+def read_image_unicode(path: Path) -> np.ndarray | None:
+    """Read image from a Unicode Windows path."""
+    try:
+        data = np.fromfile(str(path), dtype=np.uint8)
+    except OSError:
+        return None
+    if data.size == 0:
+        return None
+    return cv2.imdecode(data, cv2.IMREAD_COLOR)
 
 
 def prepare_for_ocr(image: np.ndarray, scale: float = 2.0) -> np.ndarray:
@@ -126,7 +143,7 @@ def process_document_image(
     sample_dir = output_dir / stem
     sample_dir.mkdir(parents=True, exist_ok=True)
 
-    image = cv2.imread(str(image_path))
+    image = read_image_unicode(image_path)
     if image is None:
         raise FileNotFoundError(f"Cannot read image: {image_path}")
 
@@ -181,12 +198,14 @@ def process_document_image(
     cleaned = clean_binary(binary, kernel_size=params.morph_kernel)
     # 14) Crop dung vung co chu de bo phan trang thua va vien den.
     text_crop = crop_text_region(cleaned, padding=params.text_crop_padding)
+    dominant_cleaned = crop_dominant_text_region(cleaned, padding=params.text_crop_padding)
+    dominant_gray = crop_dominant_text_region(warped_enhanced, padding=params.text_crop_padding)
     # 15) Phong to va them le trang de Tesseract doc de hon.
-    ocr_ready = add_white_margin(prepare_for_ocr(text_crop, scale=params.ocr_scale), margin=35)
+    ocr_ready = add_white_margin(prepare_for_ocr(dominant_cleaned, scale=params.ocr_scale), margin=35)
     # 16) Anh scan de bao cao nen de nhin, nen dung anh xam tang tuong phan thay vi
     # anh nhi phan qua gat. OCR van co the dung mot bien the khac o ben duoi.
     readable_scan = add_white_margin(
-        prepare_for_ocr(crop_text_region(warped_enhanced, padding=params.text_crop_padding), scale=params.ocr_scale),
+        prepare_for_ocr(dominant_gray, scale=params.ocr_scale),
         margin=35,
     )
 
@@ -201,6 +220,7 @@ def process_document_image(
     save_image(sample_dir / "08_threshold.jpg", binary)
     save_image(sample_dir / "09_cleaned.jpg", cleaned)
     save_image(sample_dir / "10_text_crop.jpg", text_crop)
+    save_image(sample_dir / "10b_dominant_text_crop.jpg", dominant_gray)
     save_image(sample_dir / "11_ocr_ready.jpg", ocr_ready)
     save_image(sample_dir / "12_readable_scan.jpg", readable_scan)
     save_image(Path(output_dir) / "final" / f"{stem}_scan.png", readable_scan)
@@ -216,6 +236,14 @@ def process_document_image(
         "readable_scan": readable_scan,
         "cleaned_full": cleaned,
         "text_crop_cleaned": ocr_ready,
+        "dominant_gray_text": add_white_margin(
+            prepare_for_ocr(dominant_gray, scale=params.ocr_scale),
+            margin=35,
+        ),
+        "dominant_cleaned_text": add_white_margin(
+            prepare_for_ocr(dominant_cleaned, scale=params.ocr_scale),
+            margin=35,
+        ),
         "text_crop_no_morph": add_white_margin(
             prepare_for_ocr(crop_text_region(binary, padding=params.text_crop_padding), scale=params.ocr_scale),
             margin=35,
@@ -257,6 +285,8 @@ def process_document_image(
                 # that are long but full of fake characters.
                 score += {
                     "readable_scan": -80.0,
+                    "dominant_gray_text": -95.0,
+                    "dominant_cleaned_text": -60.0,
                     "gray_text_crop": -55.0,
                     "text_crop_cleaned": -30.0,
                     "text_crop_no_morph": -20.0,
