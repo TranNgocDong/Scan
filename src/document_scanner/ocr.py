@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
+import unicodedata
 from pathlib import Path
 
 import cv2
@@ -30,6 +32,72 @@ def _resolve_tesseract_cmd() -> str | None:
     if known.exists():
         return str(known)
     return None
+
+
+def postprocess_ocr_text(text: str) -> str:
+    """Clean common OCR mistakes in Vietnamese printed documents."""
+    # Hau xu ly nhe: sua khoang trang va mot so loi OCR tieng Viet hay gap.
+    # Day khong thay the OCR, chi lam sach nhung loi lap lai do dau/ky tu bi nham.
+    text = unicodedata.normalize("NFC", text or "")
+    text = text.replace("\x0c", "")
+    text = text.replace("“", '"').replace("”", '"').replace("''", '"')
+    text = text.replace("’", "'").replace("‘", "'")
+
+    replacements = [
+        ("kình doanh", "kinh doanh"),
+        ("kình đoanh", "kinh doanh"),
+        ("cẩu lợi", "cầu lợi"),
+        ("câu lợi", "cầu lợi"),
+        ("mâu thuần", "mâu thuẫn"),
+        ("mâu thuả n", "mâu thuẫn"),
+        ("mâu th uẫn", "mâu thuẫn"),
+        ("mâu thị uẫn", "mâu thuẫn"),
+        ("glai cấp", "giai cấp"),
+        ("gỉai cấp", "giai cấp"),
+        ("đục vọng", "dục vọng"),
+        ("duc vọng", "dục vọng"),
+        ("duc vong", "dục vọng"),
+        ("quyển lực", "quyền lực"),
+        ("quyển lự", "quyền lực"),
+        ("đòn bảy", "đòn bẩy"),
+        ("đòn bẫy", "đòn bẩy"),
+        ("cập phạm trù", "cặp phạm trù"),
+        ("điểu lợi", "điều lợi"),
+        ("điểu lợ", "điều lợi"),
+        ("đẻ xuất", "đề xuất"),
+        ("chỉ ra răng", "chỉ ra rằng"),
+        ("từng chỉ ra răng", "từng chỉ ra rằng"),
+        ("xâu xa", "xấu xa"),
+        ("vẻ lợi", "về lợi"),
+        ("tơ bản", "cơ bản"),
+        ("lo đanh", "lo danh"),
+        ("Nhân đân", "Nhân dân"),
+        ("lịch sứ", "lịch sử"),
+        ("cọn người", "con người"),
+    ]
+
+    for wrong, right in replacements:
+        pattern = re.compile(re.escape(wrong), flags=re.IGNORECASE)
+
+        def repl(match: re.Match) -> str:
+            found = match.group(0)
+            if found[:1].isupper():
+                return right[:1].upper() + right[1:]
+            return right
+
+        text = pattern.sub(repl, text)
+
+    cleaned_lines = []
+    for line in text.splitlines():
+        line = re.sub(r"[ \t]+", " ", line).strip()
+        # Bo mot so dong gan nhu chi la ky tu rac.
+        letters = sum(ch.isalpha() for ch in line)
+        if line and letters == 0 and len(line) <= 4:
+            continue
+        cleaned_lines.append(line)
+    text = "\n".join(cleaned_lines)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip() + ("\n" if text.strip() else "")
 
 
 def run_tesseract_ocr(image, lang: str = "eng", psm: int = 6) -> tuple[str, str | None]:
@@ -66,7 +134,7 @@ def run_tesseract_ocr(image, lang: str = "eng", psm: int = 6) -> tuple[str, str 
     # oem=3: dung che do OCR mac dinh manh nhat cua Tesseract.
     # psm do minh chon theo bo cuc tai lieu, o day mac dinh la 6.
     config = f"--oem 3 --psm {int(psm)} --dpi 300 -c preserve_interword_spaces=1"
-    text = pytesseract.image_to_string(ocr_image, lang=lang, config=config)
+    text = postprocess_ocr_text(pytesseract.image_to_string(ocr_image, lang=lang, config=config))
     return text, None
 
 
@@ -99,7 +167,7 @@ def run_tesseract_ocr_with_confidence(image, lang: str = "eng", psm: int = 6) ->
         ocr_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
     config = f"--oem 3 --psm {int(psm)} --dpi 300 -c preserve_interword_spaces=1"
-    text = pytesseract.image_to_string(ocr_image, lang=lang, config=config)
+    text = postprocess_ocr_text(pytesseract.image_to_string(ocr_image, lang=lang, config=config))
 
     confidences = []
     data = pytesseract.image_to_data(

@@ -51,6 +51,25 @@ def denoise(gray: np.ndarray, blur_ksize: int = 5) -> np.ndarray:
     return cv2.GaussianBlur(gray, (blur_ksize, blur_ksize), 0)
 
 
+def normalize_background(gray: np.ndarray, sigma: float = 35.0) -> np.ndarray:
+    """Flatten slow illumination changes before OCR."""
+    # Chuan hoa nen giay bang cach chia anh cho nen mo.
+    # Buoc nay giup giam bong, anh sang khong deu va chu mat sau bi ham len.
+    gray = to_gray(gray)
+    sigma = max(float(sigma), 3.0)
+    background = cv2.GaussianBlur(gray, (0, 0), sigmaX=sigma, sigmaY=sigma)
+    normalized = cv2.divide(gray, background, scale=255)
+    return cv2.normalize(normalized, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+
+
+def sharpen_text(gray: np.ndarray, amount: float = 0.7, sigma: float = 1.0) -> np.ndarray:
+    """Sharpen text strokes gently for OCR."""
+    # Lam net nhe, khong nen qua manh vi dau tieng Viet rat de bi vo hoac dinh.
+    gray = to_gray(gray)
+    blurred = cv2.GaussianBlur(gray, (0, 0), sigmaX=float(sigma), sigmaY=float(sigma))
+    return cv2.addWeighted(gray, 1.0 + float(amount), blurred, -float(amount), 0)
+
+
 def adaptive_binarize(
     gray: np.ndarray,
     block_size: int = 31,

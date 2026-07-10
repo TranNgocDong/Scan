@@ -37,9 +37,10 @@ Pipeline ky thuat:
 10. Adaptive threshold/Otsu: tach chu khoi nen khi anh sang khong deu.
 11. Morphology nhe: lam sach nhieu nho nhung giu kernel nho de khong lam mat dau tieng Viet.
 12. Text crop: cat dung vung co chu de OCR khong doc vao phan trang trong.
-13. Upscale + white margin: phong to chu nho va them le trang de Tesseract doc de hon.
-14. OCR candidate selection: thu nhieu anh dau vao OCR va nhieu PSM, chon ket qua co diem tot nhat.
-15. Tesseract OCR: trich xuat van ban tu anh da duoc chuan hoa.
+13. Background normalization: lam phang nen giay, giam bong va chu mat sau bi lo.
+14. Upscale + white margin: phong to chu nho va them le trang de Tesseract doc de hon.
+15. OCR candidate selection: thu nhieu anh dau vao OCR va nhieu PSM, chon ket qua co diem tot nhat.
+16. Tesseract OCR + postprocess: trich xuat van ban va sua mot so loi OCR tieng Viet lap lai.
 
 Lien he yeu cau cua thay:
 - Du lieu that: anh dat trong data_Scan.
@@ -129,7 +130,9 @@ def write_image_report(result: dict, image_path: Path, params: ScannerParams) ->
         "05_document_contour.jpg, 06_warped.jpg, 07_borderless.jpg,",
         "07b_page_region.jpg, 08_threshold.jpg, 09_cleaned.jpg,",
         "10_text_crop.jpg, 11_ocr_ready.jpg, 12_readable_scan.jpg,",
-        "13_best_ocr_input.jpg, FINAL_SCAN.png, OCR_TEXT.txt",
+        "12a_ocr_page_gray.jpg, 12b_ocr_background_norm.jpg,",
+        "12c_ocr_dominant_background.jpg, 13_best_ocr_input.jpg,",
+        "FINAL_SCAN.png, OCR_TEXT.txt",
     ]
     if "cer" in result:
         lines.extend(["", "Danh gia voi ground truth:", f"- CER: {result['cer']}", f"- WER: {result['wer']}"])

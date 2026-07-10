@@ -26,9 +26,11 @@ from .preprocess import (
     crop_light_page_region,
     crop_text_region,
     denoise,
+    normalize_background,
     otsu_binarize,
     remove_dark_borders,
     resize_max_side,
+    sharpen_text,
     to_gray,
 )
 
@@ -115,11 +117,38 @@ def _score_ocr_candidate(text: str, truth: str | None) -> tuple[float, float | N
     words = [word for word in stripped.replace("\n", " ").split(" ") if word]
     short_noise_words = sum(1 for word in words if len(word) <= 1 and not word.isalnum())
     symbol_ratio = symbol_count / total
+    common_vietnamese_words = {
+        "người",
+        "không",
+        "trong",
+        "của",
+        "và",
+        "là",
+        "một",
+        "có",
+        "cho",
+        "rằng",
+        "như",
+        "được",
+        "với",
+        "thì",
+        "đã",
+        "này",
+        "những",
+        "các",
+        "theo",
+        "thành",
+    }
+    lower_words = [word.strip(".,;:!?()[]{}\"'").lower() for word in words]
+    common_hits = sum(1 for word in lower_words if word in common_vietnamese_words)
+    vietnamese_marks = sum(ch in "ăâđêôơưáàảãạắằẳẵặấầẩẫậéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ" for ch in stripped.lower())
 
     score = (
         -0.08 * letter_count
         -0.03 * digit_count
         -1.2 * len(words)
+        -4.0 * common_hits
+        -0.8 * vietnamese_marks
         + 5.0 * symbol_count
         + 10.0 * suspicious_count
         + 3.0 * short_noise_words
@@ -188,6 +217,10 @@ def process_document_image(
     warped_gray = to_gray(page_region_color)
     # 11) Tang tuong phan lan nua tren anh da duoc sua phoi canh.
     warped_enhanced = clahe_contrast(warped_gray)
+    # 11b) Tao bien the rieng cho OCR: lam phang nen giay va lam net nhe.
+    # Bien the nay thuong tot hon threshold gat khi anh sach bi bong hoac lo chu mat sau.
+    warped_background = normalize_background(warped_gray)
+    warped_background_sharp = sharpen_text(warped_background, amount=0.6, sigma=1.0)
     # 12) Binarize thich nghi de tach chu khoi nen khong deu.
     binary = adaptive_binarize(
         warped_enhanced,
@@ -200,12 +233,19 @@ def process_document_image(
     text_crop = crop_text_region(cleaned, padding=params.text_crop_padding)
     dominant_cleaned = crop_dominant_text_region(cleaned, padding=params.text_crop_padding)
     dominant_gray = crop_dominant_text_region(warped_enhanced, padding=params.text_crop_padding)
+    dominant_background = crop_dominant_text_region(warped_background_sharp, padding=params.text_crop_padding)
     # 15) Phong to va them le trang de Tesseract doc de hon.
     ocr_ready = add_white_margin(prepare_for_ocr(dominant_cleaned, scale=params.ocr_scale), margin=35)
     # 16) Anh scan de bao cao nen de nhin, nen dung anh xam tang tuong phan thay vi
     # anh nhi phan qua gat. OCR van co the dung mot bien the khac o ben duoi.
     readable_scan = add_white_margin(
         prepare_for_ocr(dominant_gray, scale=params.ocr_scale),
+        margin=35,
+    )
+    page_gray_ocr = add_white_margin(prepare_for_ocr(warped_gray, scale=params.ocr_scale), margin=35)
+    page_background_ocr = add_white_margin(prepare_for_ocr(warped_background_sharp, scale=params.ocr_scale), margin=35)
+    dominant_background_ocr = add_white_margin(
+        prepare_for_ocr(dominant_background, scale=params.ocr_scale),
         margin=35,
     )
 
@@ -223,6 +263,9 @@ def process_document_image(
     save_image(sample_dir / "10b_dominant_text_crop.jpg", dominant_gray)
     save_image(sample_dir / "11_ocr_ready.jpg", ocr_ready)
     save_image(sample_dir / "12_readable_scan.jpg", readable_scan)
+    save_image(sample_dir / "12a_ocr_page_gray.jpg", page_gray_ocr)
+    save_image(sample_dir / "12b_ocr_background_norm.jpg", page_background_ocr)
+    save_image(sample_dir / "12c_ocr_dominant_background.jpg", dominant_background_ocr)
     save_image(Path(output_dir) / "final" / f"{stem}_scan.png", readable_scan)
 
     truth = None
@@ -233,6 +276,9 @@ def process_document_image(
     # image, not a replacement for the CV pipeline.
     # Muc tieu o day la chon anh nao vao Tesseract thi cho ket qua tot nhat.
     ocr_candidates = {
+        "page_gray": page_gray_ocr,
+        "page_background_norm": page_background_ocr,
+        "dominant_background_norm": dominant_background_ocr,
         "readable_scan": readable_scan,
         "cleaned_full": cleaned,
         "text_crop_cleaned": ocr_ready,
@@ -284,10 +330,13 @@ def process_document_image(
                 # beat harsh binary images. Mean confidence helps avoid outputs
                 # that are long but full of fake characters.
                 score += {
-                    "readable_scan": -80.0,
-                    "dominant_gray_text": -95.0,
-                    "dominant_cleaned_text": -60.0,
-                    "gray_text_crop": -55.0,
+                    "page_gray": -130.0,
+                    "page_background_norm": -105.0,
+                    "dominant_background_norm": -95.0,
+                    "readable_scan": -55.0,
+                    "dominant_gray_text": -70.0,
+                    "dominant_cleaned_text": -45.0,
+                    "gray_text_crop": -45.0,
                     "text_crop_cleaned": -30.0,
                     "text_crop_no_morph": -20.0,
                     "otsu_text_crop": -10.0,
@@ -295,7 +344,9 @@ def process_document_image(
                 }.get(name, 0.0)
                 if mean_conf >= 0:
                     score -= mean_conf * 2.0
-                if psm in (3, 4):
+                if psm == 3:
+                    score -= 12.0
+                elif psm == 4:
                     score -= 8.0
                 elif psm in (11, 12):
                     score += 4.0
